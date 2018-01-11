@@ -42,7 +42,7 @@ char *buildInSym[] = {
     "AMZN", "GOOG", "AAPL", "INTC",
     LAST_SYM
 };
-int searchInFile(const char *fname, int source, int format)
+int searchInFile(const char *fname, int source, int format, char *sym)
 {
     char tmpString[1024];
     char *patten = patterns[source][format];
@@ -240,7 +240,7 @@ int getOneProfile(CURL *curl, int source, int format, char *sym)
 
         if (bodyfile)
         {
-            //searchInFile(bodyfilename, source, format);
+            //searchInFile(bodyfilename, source, format, sym);
             searchInFileLimited(bodyfilename, source, format, sym);
         }
     }
