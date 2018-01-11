@@ -1,0 +1,423 @@
+#!/bin/bash
+
+#default grep options
+grepopt="-r -n --color=always"
+chext="--include "*.c" --include "*.h""
+allext="--include "*.c" --include "*.h" --include "*.html" --include "*.txt" --include "*.js" --include "*.sym""
+sedcmd="sed -n -e "
+prevtext=' '
+remebertext=' '
+excludetext=''
+sedmode=false
+execcmd=' '
+debug=false
+
+reset() {
+    casesensitive=true    #i--toggle
+    wholeword=false       #w--toggle
+    cext=true             #e--toggle
+    hidecmd=true          #e--toggle
+    exclude=false	      #v--toggle by default, no excluded text
+}
+showopt() {
+    echo "casesensitive(i)="$casesensitive "wholeword(w)="$wholeword "cext(e)="$cext "exclude(v)="$exclude "excludetext="$excludetext
+    echo "sedmode="$sedmode "debug="$debug
+}
+grepc() {
+#echo "search ... " "$1"
+showopt
+if [[ ( "$2" = "1" ) || ( "$2" = "c" ) ]]; then
+    echo "search ... " "$1" " and convert to DOS file path"
+    grep $grepopt  --include \*.c --include \*.h  "$1"  . | tr '/' '\\'
+else
+    local opt=$grepopt
+    if [ $casesensitive = false ]; then
+        opt="-i $opt"
+    fi
+    if [ $wholeword = true ]; then
+        opt="-w $opt"
+    fi
+    if [ $cext = true ]; then
+        echo "opt:" $opt $chext "search ... " "$1"
+        if [ $exclude = false ]; then
+            grep $opt $chext "$1" .
+        else
+            grep $opt $chext "$1" . | grep -v "$excludetext"
+        fi
+    else
+        echo "opt:" $opt $allext "search ... " "$1"
+        if [ $exclude = false ]; then
+            grep $opt $allext "$1"  . 
+        else
+            grep $opt $allext "$1"  . | grep -v "$excludetext"
+        fi
+    fi
+fi
+}
+
+showhelp() {
+    echo "h      -- show help menu "
+    echo "i      -- toggle case sensitive or not in grep command"
+    echo "w      -- toggle whole word or not in grep command"
+    echo "e      -- toggle (c/h extension and hidecmd) or (all extensions and showcmd) "
+    echo "v      -- specify exclude string "
+    echo "d      -- on / off debug mode"
+    echo "q      -- quit sed mode or this script. long forms are quit or exit "
+    echo "[UP]   -- repeat last command or search "
+    echo "<-     -- remember the command or search "
+    echo "->     -- repeat remembered command or search "
+    echo "[ENTER]-- sed again if prev command is sed"
+    echo "pwd    -- linux pwd "
+    echo "ls     -- linux command ls"
+    echo "cd     -- linux cd (change dir)"
+    echo "cat    -- linux cat"
+    echo "rm     -- linux rm"
+    echo "vi     -- linux vim"
+    echo "fd     -- script 'fd' to find files"
+    echo "dir    -- list directories in /home/lluo/bin/dir.txt"
+	echo "mk4    -- make tz400 debug  'make -j16 sw_tz400-mc-stdeb' "
+	echo "mk5    -- make tz500w debug 'make -j16 sw_tz500w-mc-stdeb' "
+	echo "mk4p   -- make tz400 production  'make -j16 sw_tz400-mc-prod' "
+	echo "mk5p   -- make tz500w production 'make -j16 sw_tz500w-mc-prod' "
+	echo "mk26   -- make NSA2650 debug 'make -j16 sw_octeon2650-mc-stdeb' "
+    echo "grep   -- linux grep"
+    echo "p4     -- p4 command"
+	echo "edit   -- p4 edit command"
+    echo "file:line  -- cat file from line-10 to line+10"
+    echo "========================================================================="
+    showopt
+    echo "`pwd`"
+    echo "remembered:" $remembertext
+    echo "last:" $prevtext
+    if [ $hidecmd = false ] ; then
+        echo "cmd:" $execcmd
+    fi
+}
+
+notempty()
+{
+    if [[ "$1" = *[!\ ]* ]] ; then
+        return 0	#true
+    fi
+    return 1    #false
+}
+isquit() {
+    if [ "$1" = "exit" ] || [ "$1" = "quit" ] || [ "$1" = "q" ] || [ "$1" = "Q" ] ; then
+        return 0    #true
+    fi
+    return 1    #false
+}
+ismycmd() {
+    if [ $debug = true ] ; then
+        echo $1
+    fi
+    if [ "$1" = $'h' ] ; then
+        showhelp
+        return 0     #true
+    fi
+    if [ "$1" = $'d' ]; then
+        if [ $debug = true ] ; then
+            debug=false
+        else
+            debug=true
+        fi
+        return 0    #true
+    fi
+    return 1     #false
+}
+isgrepopt() {
+    if [ "$1" = $'i' ] || [ "$1" = $'w' ] || [ "$1" = $'e' ] || [ "$1" = $'v' ]; then
+        if [ $debug = true ] ; then
+            echo "is grep option"
+        fi
+        return 0    #true
+    fi
+    return 1    #false
+}
+getfileandline() {
+    local index=`expr index $1 ':'`
+    if (( index > 0 )); then
+        local tmp=$1
+        startline=${tmp:index}
+        let "endline=startline + 10"
+        let "startline=startline - 10"
+        filename=${tmp:0:index-1}
+    else	# no line number in $1
+        let "startline=1"
+        let "endline=startline + 20"
+        filename=$1
+    fi
+}
+changegrepopt() {
+    if [ "$1" = $'i' ] ; then
+        if [ $casesensitive = true ] ; then
+            casesensitive=false
+        else
+            casesensitive=true
+        fi
+    fi
+    if [ "$1" = $'w' ] ; then
+        if [ $wholeword = true ] ; then
+            wholeword=false
+        else
+            wholeword=true
+        fi
+    fi
+    if [ "$1" = $'e' ] ; then
+        if [ $cext = true ] ; then
+            cext=false
+            hidecmd=false
+        else
+            cext=true
+            hidecmd=true
+        fi
+    fi
+    if [ "$1" = $'v' ] ; then
+        if [ $exclude = true ] ; then
+            exclude=false
+            excludetext=''
+        else
+            exclude=true
+            excludetext=$2
+        fi
+    fi
+    showopt
+}
+
+issedcmd() {
+    #parameter in format /path/file:lineno
+    if [ $debug = true ] ; then
+        echo $@
+    fi
+    local index=`expr index $1 ':'`
+    if [[ "$index" = $'0' ]] ; then
+        if [ $debug = true ] ; then
+            echo "not sed string"
+        fi
+        return 1    #false
+    fi
+    local tmp=$1
+    local startline=${tmp:index}
+    if [[ $startline =~ ^-?[0-9]+$ ]] ; then
+        return 0    #true
+    fi
+    return 1    #false
+}
+makecmd() {
+	case "$1" in
+	'mk4')
+		echo "make -j16 sw_tz400-mc-stdeb"
+		make -j16 sw_tz400-mc-stdeb
+		return 0	#true
+		;;
+	'mk5')
+		echo "make -j16 sw_tz500w-mc-stdeb"
+		make -j16 sw_tz500w-mc-stdeb
+		return 0	#true
+		;;
+	'mk26')
+		echo "make -j16 sw_octeon2650-mc-stdeb"
+		make -j16 sw_octeon2650-mc-stdeb
+		return 0	#true
+		;;
+	'mk4p')
+		echo "make -j16 sw_tz400-mc-prod"
+		make -j16 sw_tz400-mc-prod
+		return 0	#true
+		;;
+	'mk5p')
+		echo "make -j16 sw_tz500w-mc-prod"
+		make -j16 sw_tz500w-mc-prod
+		return 0	#true
+		;;
+	esac
+	return 1	#false;
+}
+readdirfile() {
+	dirfile="/home/lluo/bin/dir.txt"
+	while IFS= read -r line
+	do
+		# display $line or do somthing with $line
+		echo "$line"
+	done < "$dirfile"
+}
+getlinefromfile() {
+	dirfile="/home/lluo/bin/dir.txt"
+	theline="`sed -n ''$2''p ''$dirfile`"
+	echo "line: ""$theline"
+	IFS=', ' read -r -a array <<< "$theline"
+	element= cd "${array[2]}"
+	echo "pwd: " 
+	pwd
+}
+islinuxcmd() {
+    if [ $debug = true ]; then
+        echo $@
+    fi
+    if notempty $2; then
+        if [ "$1" = $'cd' ] || [ "$1" = $'cat' ] || [ "$1" = $'ls' ] || [ "$1" = $'rm' ] || [ "$1" = $'grep' ] || [ "$1" = $'fd' ]; then
+            eval $@      # $* or $@ holds all parameters or arguments passed to the function
+            return 0    #true
+        else
+			if [ "$1" = $'dir' ]; then
+				# go to particular directory in /home/lluo/bin/dir.txt
+				if [ $debug = true ]; then
+					echo "go to particular directory ""$2"
+				fi
+				getlinefromfile $@
+				return 0    #true
+			else
+			#	vi command two ways "vi file:line" or "file:line vi"
+				if [ "$1" = $'vi' ]; then
+					getfileandline $2
+					let "startline=startline + 10"  # getfileandline -10 to startline
+					vim $filename "+$startline"
+					return 0    #true
+				else 
+					if [ "$2" = $'vi' ]; then
+						getfileandline $1
+						let "startline=startline + 10"  # getfileandline -10 to startline
+						vim $filename "+$startline"
+						if [ $debug = true ] ; then
+							echo $filename "+$startline"
+						fi
+						return 0    #true
+					fi
+				fi
+			fi
+        fi
+    else  # only one paramter:  gdc (dir | mk4 | mk5 | mk26)
+		echo "only one paramter " $@
+        if [ "$1" = $'ls' ] || [ "$1" = $'pwd' ] ; then
+            eval $@     # $* or $@ holds all parameters or arguments passed to the function
+            return 0    #true
+        else 
+            if [ "$1" = $'dir' ] ; then
+                cat /home/lluo/bin/dir.txt
+                return 0    #true
+			else
+				if [ "$1" = $'h' ] ; then
+					showhelp
+					return 0    # just display help
+				else
+					if [ "$1" = $'mk4' ] || [ "$1" = $'mk5' ] || [ "$1" = $'mk4p' ] || [ "$1" = $'mk5p' ] || [ "$1" = $'mk26' ] ; then
+						makecmd $1
+						return 0    #true
+					fi
+				fi
+            fi
+        fi
+    fi
+    return 1    #false
+}
+
+#check if the input is p4 command, if yes, execute it.
+isp4cmd() {
+#    echo $@
+    if [[ "$1" = $'p4' && "$2" = *[!\ ]* && "$3" = *[!\ ]* ]]; then
+        eval $@
+        return 0    #true
+    fi
+	if [[ "$1" = $'edit' && "$2" = *[!\ ]* ]]; then
+		eval "p4 edit " $2
+		return 0    #true
+	fi
+    return 1    #false
+}
+
+sedXtoYline() {
+    #parameter in format /path/file:lineno
+    #echo $@
+    getfileandline $@
+    sedcmd="$sedcmd '$startline, $endline p' -e '$endline q' $filename"
+    echo $sedcmd
+    execcmd=$sedcmd
+    eval $sedcmd
+    sedcmd="sed -n -e "      #reset for next sed command
+}
+sedAgain() {
+    let "startline=endline + 1"
+    let "endline=startline + 20"
+    sedcmd="$sedcmd '$startline, $endline p' -e '$endline q' $filename"
+#    echo $sedcmd
+    execcmd=$sedcmd
+    eval $sedcmd
+    sedcmd="sed -n -e "      #reset for next sed command
+}
+
+reset
+if notempty $1; then
+    if islinuxcmd $@ ; then
+        exit 1;
+    fi
+fi 
+while :
+do
+    echo -n "Enter string or cmd and press [ENTER]: "
+    read text
+    if ! [[ "$text" = *[!\ ]* ]] ; then
+        if $sedmode ; then
+            sedAgain
+        fi
+        continue    #invalid input
+    fi
+    if isquit $text ; then
+        if $sedmode ; then
+            sedmode=false   # first quit cmd is quiting sedmode
+            continue;    # back to none sed mode
+        else 
+            exit 1
+        fi
+    else
+        if [ "$text" = $'\e[A' ] ; then
+            text=$prevtext
+            echo "repeat cmd or search:" $text
+        fi
+        if [ "$text" = $'\e[C' ] ; then    # ->
+            text=$remembertext
+            echo "repeat remembered cmd or search:" $text
+        fi
+        if [ "$text" = $'\e[D' ] ; then    # <-
+            remembertext=$prevtext
+            echo "remember cmd or search:" $remembertext
+            continue;
+        fi
+        if ismycmd $text ; then
+            if [ $debug = true ] ; then
+                echo "is my command"
+            fi
+            continue;
+        fi
+        prevtext=$text      #save last command or search
+        if isgrepopt $text ; then
+            changegrepopt $text
+            continue;
+        fi
+        if islinuxcmd $text ; then
+            if [ $debug = true ] ; then
+                echo "linux command"
+            fi
+            continue;
+        fi
+        if isp4cmd $text ; then
+            continue;
+        fi
+        if issedcmd $text ; then
+            if [ $debug = true ] ; then
+                echo "sed command"
+            fi
+            sedXtoYline ${text}
+            sedmode=true
+            continue
+        fi
+        if [[ $text = *[!\ ]* ]]; then
+            if [ $debug = true ] ; then
+                echo "grep command"
+            fi
+            grepc "$text"
+        prevtext=$text
+#        else 
+#        echo "search text consites of space only"
+        fi
+    fi
+done
